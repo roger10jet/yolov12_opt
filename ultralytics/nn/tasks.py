@@ -87,7 +87,8 @@ from ultralytics.utils.torch_utils import (
     scale_img,
     time_sync,
 )
-from yolov12.ultralytics.nn.extramodules import ESNetV3, MSAM
+
+from ultralytics.nn.extramodules import ESNetV3, MSAM
 
 
 class BaseModel(nn.Module):
