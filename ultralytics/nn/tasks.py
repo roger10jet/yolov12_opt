@@ -87,6 +87,7 @@ from ultralytics.utils.torch_utils import (
     scale_img,
     time_sync,
 )
+from yolov12.ultralytics.nn.extramodules import ESNetV3, MSAM
 
 
 class BaseModel(nn.Module):
@@ -1036,6 +1037,10 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                 if scale in "lx":  # for L/X sizes
                     args.append(True)
                     args.append(1.5)
+        elif m is ESNetV3:
+            args = [ch[f], *args]
+        elif m is MSAM:
+            args = [ch[f], *args]
         elif m is AIFI:
             args = [ch[f], *args]
         elif m in {HGStem, HGBlock}:
