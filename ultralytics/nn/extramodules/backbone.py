@@ -1,76 +1,44 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
 
 class ESNetV3(nn.Module):
     """
         ESNetV3: 高效的轻量级卷积神经网络
         专为移动设备和嵌入式设备设计
     """
-    def __init__(self, num_classes=1000, width_multiplier=1.0):
+    def __init__(self, channel, reduction=4, cardinality=4):
         super().__init__()
-
-        # 基础通道数
-        base_channels = int(32 * width_multiplier)
-
-        # 初始卷积层
-        self.conv1 = nn.Conv2d(3, base_channels, 3, stride=2, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(base_channels)
-
-        # 构建网络块
-        self.blocks = nn.Sequential(
-            ESNetBlock(base_channels, int(64 * width_multiplier), stride=2),
-            ESNetBlock(int(64 * width_multiplier), int(128 * width_multiplier), stride=2),
-            ESNetBlock(int(128 * width_multiplier), int(256 * width_multiplier), stride=2),
-            ESNetBlock(int(256 * width_multiplier), int(512 * width_multiplier), stride=2),
-            ESNetBlock(int(512 * width_multiplier), int(1024 * width_multiplier), stride=1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True)
         )
-
-        # 全局平均池化和分类器
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(int(1024 * width_multiplier), num_classes)
+        # 多分支Dense Layer
+        self.dense_layers = nn.ModuleList()
+        for _ in range(cardinality):
+            self.dense_layers.append(nn.Sequential(
+                nn.Linear(channel // reduction, channel // reduction, bias=False),
+                nn.ReLU(inplace=True)
+            ))
+        self.fc2 = nn.Linear(channel // reduction * cardinality, channel, bias=False)
+        self.sigmoid = nn.Sigmoid()
+        self.dropout = nn.Dropout(p=0.5)
 
     def forward(self, x):
-        x = F.relu6(self.bn1(self.conv1(x)))
-        x = self.blocks(x)
-        x = self.avg_pool(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
+        b, c, _, _ = x.shape
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc1(y)
+        y = self.dropout(y)
+        # 多分支特征融合
+        dense_outs = []
+        for layer in self.dense_layers:
+            dense_outs.append(layer(y))
+        y = torch.cat(dense_outs, dim=1)
+        y = self.fc2(y)
+        y = self.sigmoid(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
 
-class ESNetBlock(nn.Module):
-    """ESNetV2基础构建块"""
-
-    def __init__(self, in_channels, out_channels, stride=1):
-        super(ESNetBlock, self).__init__()
-
-        # 深度可分离卷积
-        self.depthwise_conv = nn.Conv2d(
-            in_channels, in_channels, 3,
-            stride=stride, padding=1,
-            groups=in_channels, bias=False
-        )
-        self.depthwise_bn = nn.BatchNorm2d(in_channels)
-
-        # 逐点卷积
-        self.pointwise_conv = nn.Conv2d(in_channels, out_channels, 1, bias=False)
-        self.pointwise_bn = nn.BatchNorm2d(out_channels)
-
-        # 残差连接（当输入输出通道数相同且步长为1时）
-        self.use_residual = (in_channels == out_channels and stride == 1)
-
-    def forward(self, x):
-        residual = x
-
-        # 深度可分离卷积
-        out = F.relu6(self.depthwise_bn(self.depthwise_conv(x)))
-        out = self.pointwise_bn(self.pointwise_conv(out))
-
-        # 残差连接
-        if self.use_residual:
-            out += residual
-
-        return F.relu6(out)
 
 class MultiScaleConv(nn.Module):
     """
@@ -156,3 +124,4 @@ class MSAM(nn.Module):
         # 再应用空间注意力
         x = self.spatial_attention(x)
         return x
+

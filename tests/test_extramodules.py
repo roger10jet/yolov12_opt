@@ -1,12 +1,8 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from ultralytics.cfg import TASK2DATA, TASKS
 
 from ultralytics.nn.extramodules import ESNetV3, MSAM
-
-
-TASK_MODEL_DATA = [(TASK2DATA[task]) for task in TASKS]
 
 def test_msam():
     # 创建MSAM模块实例
@@ -27,7 +23,7 @@ def test_msam():
     print(f"输出特征图尺寸: {output.shape}")
     print("MSAM模块测试完成！")
 
-def test_esnetv3(data):
+def test_esnetv3():
     """测试ESNetV3模型"""
     # 数据预处理
     transform = transforms.Compose([
@@ -39,7 +35,7 @@ def test_esnetv3(data):
 
     # 加载数据集（示例使用CIFAR-10）
     train_dataset = datasets.CIFAR10(root="./data", train=True,
-                                     download=True, transform=transform)
+                                     download=False, transform=transform)
     train_loader = DataLoader(train_dataset, batch_size=32,
                               shuffle=True, num_workers=2)
 
